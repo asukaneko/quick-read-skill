@@ -35,20 +35,20 @@
 本仓库根目录就是 skill 本体（`SKILL.md` + `scripts/` + `references/`）。把它放进你所用 Agent 的 skills 目录即可：
 
 ```bash
-git clone https://github.com/asukaneko/quick-read-skill.git ~/.claude/skills/novel-fast-read
+git clone https://github.com/asukaneko/quick-read-skill.git ~/.claude/skills/quick-read
 # 或者
-git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/novel-fast-read
+git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/quick-read
 ```
 
 常见位置：
 
 | 环境 | 目录 |
 |---|---|
-| Claude Code | `~/.claude/skills/novel-fast-read/` |
-| 通用 agent（`.agents` 约定） | `~/.agents/skills/novel-fast-read/` |
-| 项目内 | `<project>/.agents/skills/novel-fast-read/` |
+| Claude Code | `~/.claude/skills/quick-read/` |
+| 通用 agent（`.agents` 约定） | `~/.agents/skills/quick-read/` |
+| 项目内 | `<project>/.agents/skills/quick-read/` |
 
-> 目录名建议用 `novel-fast-read`（与 `SKILL.md` 里的 `name` 一致）。
+> 目录名建议用 `quick-read`（与 `SKILL.md` 里的 `name` 一致）。
 
 ## 用法
 
@@ -88,7 +88,7 @@ git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/nov
 | `scripts/coverage_check.py` | 覆盖率兜底：列出一整段里"没被交代过"的章节 |
 
 ```bash
-SKILL_DIR=~/.claude/skills/novel-fast-read
+SKILL_DIR=~/.claude/skills/quick-read
 
 # 切分整本小说并建索引
 python3 "$SKILL_DIR/scripts/split_chapters.py" --input 全书.txt --outdir 阅读工作区/书名 --split

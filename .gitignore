@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 阅读工作区（用户自己的小说与产出，绝不入库）
+阅读工作区/
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

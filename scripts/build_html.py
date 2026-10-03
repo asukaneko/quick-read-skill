@@ -9,9 +9,10 @@
 ----------
 1. 单元导航：侧边栏列出全部单元，点击直达；章节速查可跳到具体章（有切片的章跳到切片）。
 2. 人物链接：正文里的人名自动变成可点击链接，点开看《人物档案》里的该人物详情。
-3. 阅读进度本地缓存：localStorage 记录滚动位置与当前单元，刷新/关掉重开会回到原处。
-4. 响应式：宽屏左侧固定导航 + 正文双栏；窄屏导航收成抽屉，人物详情用底部抽屉。
-5. 单文件、零依赖、零外链（可直接放进 App WebView、微信、或任意离线环境）。
+3. 字号调节：顶栏 A- / A+ 调整正文字号，localStorage 记住选择（跨段共用）。
+4. 阅读进度本地缓存：localStorage 记录滚动位置与当前单元，刷新/关掉重开会回到原处。
+5. 响应式：宽屏左侧固定导航 + 正文双栏；窄屏导航收成抽屉，人物详情用底部抽屉。
+6. 单文件、零依赖、零外链（可直接放进 App WebView、微信、或任意离线环境）。
 
 用法
 ----
@@ -688,7 +689,7 @@ PAGE_TEMPLATE = r"""<!DOCTYPE html>
   --bg:#f6f4f0; --surface:#ffffff; --ink:#2c2a27; --ink-2:#6b6660; --line:#e3ded6;
   --accent:#8a6f4e; --accent-soft:#f0e9df; --bridge:#8a8f6a; --key:#b0714a;
   --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.05);
-  --sidebar:308px; --radius:14px;
+  --sidebar:308px; --radius:14px; --fs:1;
 }
 html[data-theme="dark"]{
   --bg:#17171a; --surface:#1f1f23; --ink:#e8e5e0; --ink-2:#a09a92; --line:#33323a;
@@ -707,7 +708,7 @@ html{scroll-behavior:smooth}
 body{
   margin:0; background:var(--bg); color:var(--ink);
   font-family:"Songti SC","Noto Serif SC",Georgia,"PingFang SC","Microsoft YaHei",serif;
-  font-size:17px; line-height:1.85; -webkit-text-size-adjust:100%;
+  font-size:calc(17px * var(--fs)); line-height:1.85; -webkit-text-size-adjust:100%;
 }
 a{color:var(--accent); text-decoration:none}
 /* ---------- 顶栏 ---------- */
@@ -763,14 +764,14 @@ a{color:var(--accent); text-decoration:none}
 /* ---------- 正文 ---------- */
 .unit{padding-top:8px; margin-bottom:44px; scroll-margin-top:70px}
 .unit-title{
-  font-size:26px; margin:34px 0 16px; padding-bottom:10px; border-bottom:1px solid var(--line);
+  font-size:calc(26px * var(--fs)); margin:34px 0 16px; padding-bottom:10px; border-bottom:1px solid var(--line);
   scroll-margin-top:70px; letter-spacing:.02em;
 }
 .unit-sep{color:var(--accent); margin:0 2px}
 .unit-range{display:block; font-size:12px; color:var(--ink-2); margin-top:4px;
   font-family:system-ui,sans-serif; letter-spacing:.08em}
-.h3{font-size:19px; margin:26px 0 10px}
-.h4{font-size:16px; margin:20px 0 8px; color:var(--ink-2)}
+.h3{font-size:calc(19px * var(--fs)); margin:26px 0 10px}
+.h4{font-size:calc(16px * var(--fs)); margin:20px 0 8px; color:var(--ink-2)}
 p{margin:12px 0}
 ul,ol{margin:12px 0; padding-left:1.4em}
 li{margin:6px 0}
@@ -789,12 +790,12 @@ hr.rule{border:none; border-top:1px dashed var(--line); margin:34px 0}
 }
 .slice figcaption{font-size:12px; color:var(--accent); letter-spacing:.06em; margin-bottom:8px;
   font-family:system-ui,sans-serif}
-.slice blockquote{margin:0; padding:0; color:var(--ink); font-size:16.5px; line-height:1.95}
+.slice blockquote{margin:0; padding:0; color:var(--ink); font-size:calc(16.5px * var(--fs)); line-height:1.95}
 .slice blockquote::before{content:"「"; color:var(--ink-2)}
 .slice blockquote::after{content:"」"; color:var(--ink-2)}
 .quote{margin:16px 0; padding:10px 16px; border-left:3px solid var(--line); color:var(--ink-2)}
 .table-wrap{overflow-x:auto; margin:16px 0}
-table{border-collapse:collapse; width:100%; font-size:14.5px; font-family:system-ui,sans-serif;
+table{border-collapse:collapse; width:100%; font-size:calc(14.5px * var(--fs)); font-family:system-ui,sans-serif;
   background:var(--surface)}
 th,td{border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top}
 th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
@@ -809,7 +810,10 @@ th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
 }
 .char:hover{background:var(--accent-soft)}
 .flash{animation:flash 1.4s ease}
-@keyframes flash{0%{background:var(--accent-soft)}100%{background:transparent}}
+@keyframes flash{
+  0%{outline:2px solid var(--accent); outline-offset:3px}
+  100%{outline:2px solid transparent; outline-offset:3px}
+}
 /* ---------- 人物抽屉 ---------- */
 #char-panel{
   position:fixed; top:0; right:0; height:100%; width:min(460px,92vw); z-index:70;
@@ -819,8 +823,8 @@ th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
 #char-panel.open{transform:none}
 #char-panel header{display:flex; align-items:center; gap:10px; padding:14px 16px;
   border-bottom:1px solid var(--line)}
-#char-panel h3{margin:0; font-size:18px; flex:1}
-#char-body{padding:16px; overflow-y:auto; font-size:16px; line-height:1.9}
+#char-panel h3{margin:0; font-size:calc(18px * var(--fs)); flex:1}
+#char-body{padding:16px; overflow-y:auto; font-size:calc(16px * var(--fs)); line-height:1.9}
 #backdrop{position:fixed; inset:0; background:rgba(0,0,0,.32); z-index:65; opacity:0;
   pointer-events:none; transition:opacity .2s}
 #backdrop.show{opacity:1; pointer-events:auto}
@@ -840,7 +844,7 @@ th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
 #totop.show{display:block}
 /* ---------- 窄屏 ---------- */
 @media (max-width:980px){
-  body{font-size:16.5px}
+  body{font-size:calc(16.5px * var(--fs))}
   #menubtn{display:inline-block}
   #topbar .stats{display:none}
   #sidebar{
@@ -850,7 +854,7 @@ th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
   }
   #sidebar.open{transform:none}
   #main{padding:18px 16px 130px; max-width:100%}
-  .unit-title{font-size:21px}
+  .unit-title{font-size:calc(21px * var(--fs))}
   #char-panel{width:100%; height:78vh; top:auto; bottom:0; right:0; border-left:none;
     border-top:1px solid var(--line); border-radius:16px 16px 0 0; transform:translateY(102%)}
   #char-panel.open{transform:none}
@@ -871,6 +875,8 @@ th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
   <h1>@@TITLE@@</h1>
   <span class="stats">@@STATS@@</span>
   <button class="iconbtn" id="themebtn" title="切换深浅色">◐</button>
+  <button class="iconbtn" id="fontminus" title="缩小字号" aria-label="缩小字号">A-</button>
+  <button class="iconbtn" id="fontplus" title="放大字号" aria-label="放大字号">A+</button>
 </header>
 
 <div id="layout">
@@ -933,6 +939,20 @@ th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
     try { localStorage.setItem(THEME_KEY, next); } catch(e){}
   };
 
+  /* ---------- 字号 ---------- */
+  var FONT_KEY = 'nfr:font';
+  var FS_MIN = 0.8, FS_MAX = 1.6, FS_STEP = 0.1;
+  var curFs = 1;
+  try { var sf = parseFloat(localStorage.getItem(FONT_KEY)); if (isFinite(sf)) curFs = sf; } catch(e){}
+  function applyFont(v){
+    curFs = Math.min(FS_MAX, Math.max(FS_MIN, Math.round(v * 100) / 100));
+    document.documentElement.style.setProperty('--fs', curFs.toFixed(2));
+    try { localStorage.setItem(FONT_KEY, String(curFs)); } catch(e){}
+  }
+  applyFont(curFs);
+  document.getElementById('fontminus').onclick = function(){ applyFont(curFs - FS_STEP); };
+  document.getElementById('fontplus').onclick = function(){ applyFont(curFs + FS_STEP); };
+
   /* ---------- 抽屉 ---------- */
   function closeSidebar(){ sidebar.classList.remove('open'); backdrop.classList.remove('show'); }
   function closePanel(){ panel.classList.remove('open'); backdrop.classList.remove('show'); }
@@ -987,7 +1007,7 @@ th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
     var a = e.target.closest('a[href^="#"]');
     if (!a) return;
     var el = document.querySelector(a.getAttribute('href'));
-    if (!el) return;
+    if (!el || !el.closest('#main')) return;   /* 只高亮正文目标，别把 flash 套到抽屉/侧栏上 */
     el.classList.add('flash');
     setTimeout(function(){ el.classList.remove('flash'); }, 1400);
     if (matchMedia('(max-width:980px)').matches) closeSidebar();

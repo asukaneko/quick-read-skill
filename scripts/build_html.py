@@ -181,6 +181,22 @@ def parse_blocks(text: str):
 ALIAS_HEAD_KEYS = ("本名", "姓名", "人物", "角色")
 ALIAS_COL_KEYS = ("马甲", "尊称", "别名", "化名", "道号", "代号", "称呼")
 SPLIT_RE = re.compile(r"[、,，/／|;；\s]+")
+EMPH_RE = re.compile(r"[*`]+")
+PAREN_RE = re.compile(r"（[^）]*）|\([^()]*\)")
+
+
+def clean_cell(s) -> str:
+    """去掉表格单元格里的 markdown 强调符号（**加粗** / `代码`）。
+
+    别名归一表的「本名」「马甲」列常写成 **韩立** 这类加粗体例，
+    不剥离的话别名键会变成 '**韩立**'，正文人名就再也匹配不上。
+    """
+    return EMPH_RE.sub("", s or "").strip()
+
+
+def clean_alias_cell(s) -> str:
+    """别名单元格：再去掉「（第1292章 某人所称）」这类括号说明。"""
+    return clean_cell(PAREN_RE.sub("", s or ""))
 
 
 def parse_characters(path: Path):
@@ -196,7 +212,7 @@ def parse_characters(path: Path):
     for b in blocks:
         if b["t"] != "table" or len(b["rows"]) < 2:
             continue
-        header = b["rows"][0]
+        header = [clean_cell(c) for c in b["rows"][0]]
         if not any(any(k in c for k in ALIAS_HEAD_KEYS) for c in header):
             continue
         name_col, alias_cols = None, []
@@ -211,13 +227,13 @@ def parse_characters(path: Path):
         for row in b["rows"][1:]:
             if len(row) <= name_col or TABLE_SEP_RE.match(row[name_col] or "--"):
                 continue
-            main = row[name_col].strip()
+            main = clean_cell(row[name_col])
             if not main:
                 continue
             aliases.setdefault(main, main)
             for ci in alias_cols:
                 if ci < len(row):
-                    for a in SPLIT_RE.split(row[ci]):
+                    for a in SPLIT_RE.split(clean_alias_cell(row[ci])):
                         a = a.strip()
                         if a and len(a) <= 8:
                             aliases.setdefault(a, main)

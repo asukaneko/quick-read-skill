@@ -74,6 +74,7 @@ git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/qui
 ├── 伏笔与悬念.md
 ├── 故事状态.md         # 剧情单元级状态快照
 ├── 速读稿.md / 衔接包.md
+├── 速读稿.html         # 由 build_html.py 生成，交付给用户读的就是它
 └── 原文切片.md         # 汇总后的关键原文，供"只想细读"
 ```
 

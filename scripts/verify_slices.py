@@ -32,7 +32,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-MARKER_RE = re.compile(r"^\s*【原文\s*[·・:：]\s*([^】]*)】\s*(.*)$")
+MARKER_RE = re.compile(r"^\s*(?:\*\*)?\s*【原文\s*[·・:：]?\s*([^】]*)】\s*(?:\*\*)?\s*(.*)$")
 QUOTE_STRIP = "「」『』“”\"'‘’《》〈〉 \t"
 ELLIPSIS_SPLIT = re.compile(r"(?:\.{2,}|…+|﹍+|——+|\*{2,})")
 

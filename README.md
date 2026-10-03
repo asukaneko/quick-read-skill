@@ -86,6 +86,9 @@ git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/qui
 | `scripts/split_chapters.py` | 章节识别与切分、生成索引；自动猜编码（UTF-8/GB18030…）、清理盗版站广告行、识别卷/篇结构；认不出会告警并退化为定长分块 |
 | `scripts/verify_slices.py` | 校验原文切片是否**逐字**来自原文，定位到章，并可汇总成切片合集 |
 | `scripts/coverage_check.py` | 覆盖率兜底：列出一整段里"没被交代过"的章节 |
+| `scripts/finalize.py` | **一条命令收尾**：覆盖率 → 切片逐字 → 生成 HTML，只在末尾回一小段摘要，失败才展开明细 |
+| `scripts/build_html.py` | 把速读稿渲染成**单文件 HTML 阅读器**：单元导航、章节速查、人物链接、阅读进度缓存、响应式 |
+| `scripts/make_plan.py` | 把章节索引切成可并行派单的批次，并为每批写一份自包含的派单文件 |
 
 ```bash
 SKILL_DIR=~/.claude/skills/quick-read
@@ -107,9 +110,33 @@ python3 "$SKILL_DIR/scripts/verify_slices.py" \
 python3 "$SKILL_DIR/scripts/coverage_check.py" \
   --index 阅读工作区/书名/chapters.tsv \
   --doc 阅读工作区/书名/速读稿.md
+
+# 一条命令收尾：覆盖率 + 切片逐字 + 生成 HTML
+python3 "$SKILL_DIR/scripts/finalize.py" \
+  --dir 阅读工作区/书名 --range 1-320 --source 阅读工作区/书名/原文
 ```
 
-切片在 Markdown 里必须写成这个格式，脚本才认：
+## HTML 速读页
+
+`build_html.py` 把速读稿渲染成一份**单文件 HTML 阅读器**，直接发给用户就能当书读：
+
+```bash
+python3 "$SKILL_DIR/scripts/build_html.py" \
+  --digest 阅读工作区/书名/速读稿.md \
+  --characters 阅读工作区/书名/人物档案.md \
+  --index 阅读工作区/书名/chapters.tsv \
+  --progress-key 书名-1-320
+```
+
+- **单元导航**：侧栏列出各单元与「总览 / 附录」，搜索框可同时筛单元、章节、人物。
+- **章节速查**：有 `chapters.tsv` 时列出全段每一章，点击直达该章所在单元；有切片的章直达切片。
+- **人物链接**：正文人名可点，弹出《人物档案》里该人物条目（窄屏为底部抽屉）。
+- **阅读进度**：`localStorage` 记住所在单元与滚动位置，刷新或重开自动回到原处，可一键清除。
+- **响应式**：宽屏左栏＋限宽正文，窄屏折叠为抽屉；跟随系统深色主题；零外链、可离线打开。
+
+模型只负责按体例产出 markdown（单元标题、`**【原文·第N章 章名】**` 切片、`### 人名` 人物条目），HTML 全部交给脚本；输入契约与告警处理见 `references/html-output.md`。
+
+切片在 Markdown 里必须写成这个格式，脚本才认（加粗写法同样识别）：
 
 ```markdown
 【原文·第12章 密室对峙】
@@ -119,12 +146,15 @@ python3 "$SKILL_DIR/scripts/coverage_check.py" \
 ## 目录
 
 ```
-SKILL.md                       # 主流程：两种模式、铁律、六步执行、详略分级
+SKILL.md                       # 主流程：定段 → 并发读卡 → 聚合 → 校验 → 交付 HTML → 回写台账
+reference.md                   # 速读段体例清单速查：单元、切片、人物档案、伏笔四栏、收尾命令
 references/card-template.md    # 分章卡片模板 + 正反例
 references/digest-template.md  # 速读稿模板 + 详略分级示例
 references/bridge-template.md  # 衔接包模板 + 「断片变数清单」
 references/splitting.md        # 章节切分、编码、自定义正则与异常处理
-scripts/                       # 三个校验/切分脚本
+references/html-output.md      # HTML 速读页的输入契约、参数与告警
+references/parallel-dispatch.md# 并行派单手册：批次粒度与子代理调度
+scripts/                       # 切分、校验、收尾、批次计划与 HTML 生成（6 个脚本）
 ```
 
 ## 设计来源

@@ -16,12 +16,16 @@
 
 ## 单元正文体例
 1. `## 单元NN｜<标题>（第 X–Y 章）`
-2. `**【过渡】**`：无状态跃变的铺垫章，写明这几章在铺什么
-3. `**【原文·第NNNN章 逐字章名】**`：切片，后续为解读
+2. 单元内是**按章号升序的单一列表**（不再分【重要】/【过渡】两节），条目形如
+   `- **第1285章（详） 标题**：……` / `- **第1280–1281章（略）**：……`；
+   `（详）`＝S/A 级章、`（略）`＝B/C 级章，章号不重不漏。
+3. `**【原文·第NNNN章 逐字章名】**`：切片，紧跟在**所属章条目之后**（不集中堆在单元末）
 4. 段末 `**这一段结束时**`：位置、境界、目标、底牌、未了账目、悬而未决
 
 > HTML 版依赖 1 与 3 这两条：单元标题决定侧栏导航，切片决定「章节速查」能跳到具体章。
+> 条目开头的 `（详）/（略）` 标签决定顶栏「只看重要章」开关能过滤掉哪些条目与切片。
 > `## 读完索引` 之类非单元二级标题会进「总览 / 附录」组，不受影响。
+> 旧稿（分【重要】/【过渡】两节）用 `scripts/reorder_digest.py` 一键重排成本体例。
 
 ## 人物档案体例
 - `## 别名归一表`：表头必须含「本名」，别名列（马甲/尊称/别名/别称）用 `、` `,` `/` 分隔。
@@ -47,6 +51,8 @@ python3 scripts/finalize.py --dir 第X-Y章 --range X-Y --source 原文/ --json 
 wc -m 段/*.md; grep -c '^\*\*【原文·' 段/*.md
 grep -n '^## ' 速读稿.md
 grep -c '跨段' 速读稿.md          # 应为 0
+grep -o '^\*\*第[^*]*（详）' 速读稿.md | wc -l    # 详/略 条目数，抽查排序是否升序
+python3 scripts/reorder_digest.py --in 速读稿.md --dry-run   # 旧稿（【重要】/【过渡】分节）转连贯体例前先看报告
 python3 scripts/coverage_check.py --index chapters.tsv --doc 第X-Y章/速读稿.md --range X-Y --out 第X-Y章/覆盖率报告.md
 python3 scripts/verify_slices.py --digest 第X-Y章/速读稿.md --source 原文/ --index chapters.tsv --collect 第X-Y章/原文切片.md
 python3 scripts/build_html.py --digest 第X-Y章/速读稿.md --json

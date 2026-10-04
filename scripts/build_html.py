@@ -76,6 +76,30 @@ HR_RE = re.compile(r"^(-{3,}|\*{3,}|_{3,})$")
 TABLE_SEP_RE = re.compile(r"^:?-{2,}:?$")
 BRIDGE_RE = re.compile(r"^\*\*【(过渡|重要|原文[^】]*)】\*\*")
 UNIT_END_RE = re.compile(r"^\*\*这一段结束时\*\*")
+# 新体例条目：`- **第1285章（详） 标题**：…` / `- **第1280–1281章（略）**：…`
+ENTRY_LVL_RE = re.compile(r"^\*\*第\s*[0-9][0-9、,，和及\s–—~～\-至到]*?章\s*[（(](详|略)[）)]")
+ENTRY_CH_RE = re.compile(r"^\*\*第\s*([0-9][0-9、,，和及\s–—~～\-至到]*?)\s*章")
+ENTRY_RANGE_RE = re.compile(r"(\d{1,6})\s*[–—~～\-至到]\s*(\d{1,6})")
+
+
+def entry_chapters(item: str):
+    """从条目开头 `**第…章` 里抽出章号集合（范围展开、顿号列举）。"""
+    m = ENTRY_CH_RE.match(item)
+    if not m:
+        return set()
+    nums: set[int] = set()
+
+    def repl(mm):
+        a, b = int(mm.group(1)), int(mm.group(2))
+        if b > a and b - a <= 300:
+            nums.update(range(a, b + 1))
+        else:
+            nums.update((a, b))
+        return " "
+
+    rest = ENTRY_RANGE_RE.sub(repl, m.group(1))
+    nums.update(int(x) for x in re.findall(r"\d{1,6}", rest))
+    return nums
 
 
 def parse_blocks(text: str):
@@ -313,9 +337,11 @@ class RenderCtx:
         self.cmap = cmap                # 章号 -> 锚点
         self.link_all = link_all
         self.linked: set[str] = set()
+        self.sec: str | None = None      # 旧体例当前小节（详/略），用于条目分级
 
     def reset_unit(self):
         self.linked = set()
+        self.sec = None
 
 
 def _inline(raw: str, ctx: RenderCtx, allow_char=True, allow_chap=True) -> str:
@@ -404,6 +430,23 @@ def render_table(b, ctx) -> str:
     return "".join(out)
 
 
+def render_ul(b, ctx: RenderCtx) -> str:
+    """列表项渲染：新体例条目（`**第X章（详|略）**`）带级别 class，供「只看重要章」过滤。"""
+    out = []
+    for x in b["items"]:
+        m = ENTRY_LVL_RE.match(x)
+        if m:
+            lvl = m.group(1)
+            kind = "key" if lvl == "详" else "bridge"
+            nums = entry_chapters(x)
+            ch = str(min(nums)) if nums else ""
+            out.append(f'<li class="entry entry-{kind}" data-lvl="{lvl}" data-ch="{ch}">'
+                       f'{_inline(x, ctx)}</li>')
+        else:
+            out.append(f"<li>{_inline(x, ctx)}</li>")
+    return "<ul>" + "".join(out) + "</ul>"
+
+
 def render_block(b, ctx: RenderCtx) -> str:
     t = b["t"]
     if t == "h":
@@ -415,24 +458,27 @@ def render_block(b, ctx: RenderCtx) -> str:
         m = BRIDGE_RE.match(text)
         if m:
             cls = ' class="callout callout-bridge"'
+            ctx.sec = "略"
         elif UNIT_END_RE.match(text):
             cls = ' class="callout callout-end"'
         elif text.startswith("**【重要】**"):
             cls = ' class="callout callout-key"'
+            ctx.sec = "详"
         body = _inline(text, ctx).replace("\n", "<br>")
         return f"<p{cls}>{body}</p>"
+    if t == "ul":
+        return render_ul(b, ctx)
     if t == "slice":
         anchor = b.get("id", "")
         head = f"【原文·{b['chapter']}】" if not b.get("label") else f"【原文·{b['chapter']} {b['label']}】"
         body = "<br>".join(_inline(x, ctx, allow_char=False, allow_chap=False) for x in b["lines"])
-        return (f'<figure class="slice" id="{anchor}">'
+        cls = "slice is-trans" if b.get("lv") == "略" else "slice"
+        return (f'<figure class="{cls}" id="{anchor}">'
                 f'<figcaption>{_html.escape(head)}</figcaption>'
                 f'<blockquote>{body}</blockquote></figure>')
     if t == "quote":
         body = "<br>".join(_inline(x, ctx, allow_char=False) for x in b["lines"])
         return f'<blockquote class="quote">{body}</blockquote>'
-    if t == "ul":
-        return "<ul>" + "".join(f"<li>{_inline(x, ctx)}</li>" for x in b["items"]) + "</ul>"
     if t == "ol":
         return "<ol>" + "".join(f"<li>{_inline(x, ctx)}</li>" for x in b["items"]) + "</ol>"
     if t == "table":
@@ -507,6 +553,15 @@ def build(digest_path: Path, characters_path, index_path, title, out_path,
 
     cmap: dict[int, str] = {}
     for u in buckets:
+        # 条目级别（详/略）范围：切片跟随所属章一起过滤
+        ranges = []
+        for b in u["blocks"]:
+            if b["t"] != "ul":
+                continue
+            for it in b["items"]:
+                m = ENTRY_LVL_RE.match(it)
+                if m:
+                    ranges.append((entry_chapters(it), m.group(1)))
         for b in u["blocks"]:
             if b["t"] != "slice":
                 continue
@@ -517,6 +572,10 @@ def build(digest_path: Path, characters_path, index_path, title, out_path,
             sid = f"s{ch}"
             b["id"] = sid
             b["n"] = ch
+            for nums, lv in ranges:
+                if ch in nums:
+                    b["lv"] = lv
+                    break
             u["slices"].append({"id": sid, "n": ch, "label": b["label"]})
             cmap[ch] = sid
 
@@ -784,6 +843,14 @@ hr.rule{border:none; border-top:1px dashed var(--line); margin:34px 0}
 .callout-key{border-color:var(--key)}
 .callout-end{border-color:var(--accent); background:var(--accent-soft); border-radius:0 10px 10px 0;
   padding:10px 14px}
+/* ---------- 条目分级 / 只看重要章 ---------- */
+li.entry{border-left:3px solid var(--line); padding-left:11px; margin:9px 0}
+li.entry-key{border-color:var(--key)}
+li.entry-bridge{border-color:var(--bridge); color:var(--ink-2); font-size:.96em}
+li.entry-bridge strong{color:var(--ink-2); font-weight:600}
+html.onlykey li.entry-bridge{display:none}
+html.onlykey .slice.is-trans{display:none}
+#filterbtn.on{border-color:var(--accent); color:var(--accent); background:var(--accent-soft)}
 .slice{
   margin:20px 0; padding:14px 16px; background:var(--surface); border:1px solid var(--line);
   border-radius:var(--radius); box-shadow:var(--shadow); scroll-margin-top:70px;
@@ -874,6 +941,7 @@ th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
   <button class="iconbtn" id="menubtn" aria-label="目录">☰</button>
   <h1>@@TITLE@@</h1>
   <span class="stats">@@STATS@@</span>
+  <button class="iconbtn" id="filterbtn" title="只看重要章（隐藏过渡章）" aria-pressed="false">只看重要</button>
   <button class="iconbtn" id="themebtn" title="切换深浅色">◐</button>
   <button class="iconbtn" id="fontminus" title="缩小字号" aria-label="缩小字号">A-</button>
   <button class="iconbtn" id="fontplus" title="放大字号" aria-label="放大字号">A+</button>
@@ -952,6 +1020,23 @@ th{background:var(--accent-soft); font-weight:600; white-space:nowrap}
   applyFont(curFs);
   document.getElementById('fontminus').onclick = function(){ applyFont(curFs - FS_STEP); };
   document.getElementById('fontplus').onclick = function(){ applyFont(curFs + FS_STEP); };
+  /* ---------- 只看重要章 ---------- */
+  var ONLY_KEY = 'nfr:onlykey';
+  var filterbtn = document.getElementById('filterbtn');
+  function applyOnly(on){
+    document.documentElement.classList.toggle('onlykey', on);
+    filterbtn.classList.toggle('on', on);
+    filterbtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    filterbtn.textContent = on ? '只看重要 ✓' : '只看重要';
+  }
+  var savedOnly = false;
+  try { savedOnly = localStorage.getItem(ONLY_KEY) === '1'; } catch(e){}
+  applyOnly(savedOnly);
+  filterbtn.onclick = function(){
+    var on = !document.documentElement.classList.contains('onlykey');
+    applyOnly(on);
+    try { localStorage.setItem(ONLY_KEY, on ? '1' : '0'); } catch(e){}
+  };
 
   /* ---------- 抽屉 ---------- */
   function closeSidebar(){ sidebar.classList.remove('open'); backdrop.classList.remove('show'); }

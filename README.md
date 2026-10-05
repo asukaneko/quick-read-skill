@@ -89,6 +89,7 @@ git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/qui
 | `scripts/coverage_check.py` | 覆盖率兜底：列出一整段里"没被交代过"的章节 |
 | `scripts/finalize.py` | **一条命令收尾**：覆盖率 → 切片逐字 → 生成 HTML，只在末尾回一小段摘要，失败才展开明细 |
 | `scripts/build_html.py` | 把速读稿渲染成**单文件 HTML 阅读器**：单元导航、章节速查、人物链接、阅读进度缓存、响应式 |
+| `scripts/build_shelf.py` | 把**多本书的多份**速读稿 HTML 汇总成**书架式导航页**：一本书多册、卡片经相对路径跳转（不合并正文）、搜索、深色、进度角标 |
 | `scripts/make_plan.py` | 把章节索引切成可并行派单的批次，并为每批写一份自包含的派单文件 |
 
 ```bash
@@ -115,6 +116,13 @@ python3 "$SKILL_DIR/scripts/coverage_check.py" \
 # 一条命令收尾：覆盖率 + 切片逐字 + 生成 HTML
 python3 "$SKILL_DIR/scripts/finalize.py" \
   --dir 阅读工作区/书名 --range 1-320 --source 阅读工作区/书名/原文
+
+# 把多本书的速读稿汇总成一个书架页（扫描目录自动收录）
+python3 "$SKILL_DIR/scripts/build_shelf.py" \
+  --root 阅读工作区 --out 阅读工作区/书架.html
+
+# 或者用 书架.md 显式编排书的顺序、册名与简介
+python3 "$SKILL_DIR/scripts/build_shelf.py" --manifest 阅读工作区/书架.md
 ```
 
 ## HTML 速读页
@@ -145,6 +153,37 @@ python3 "$SKILL_DIR/scripts/build_html.py" \
 > 「逐字原文……」
 ```
 
+## 书架页
+
+追多本书、或一本书分段交付之后，`build_shelf.py` 把所有已生成的
+`速读稿.html` / `衔接包.html` 汇总成一张**书架式导航页**：
+
+```bash
+python3 "$SKILL_DIR/scripts/build_shelf.py" --root 阅读工作区
+# → 阅读工作区/书架.html
+```
+
+- **结构即需求**：一个书架有多本书，一本书多个速读稿（各负责一部分章节）；点击书下的卡片，经**相对路径**跳到对应速读稿——正文不合并在书架页里，各册 HTML 仍是独立文件。
+- **两种收录**：给 `--manifest 书架.md` 按清单编排（顺序、册名、简介可控）；或给 `--root` 递归扫描 `速读稿.html` / `衔接包.html`，按《书名》或一级子目录自动归组成书。
+- **卡片信息**：册号、章号范围、单元/可跳转章统计，都从目标阅读器里自动读取；目标文件缺失时卡片降级并告警，不会静默丢链接。
+- **阅读进度角标**：同源部署（GitHub Pages、本地 http 服务）下，卡片会显示「读到 N%」的丝带书签，顶栏出现「继续阅读」直达最近在读的一册；`file://` 双击打开时浏览器限制跨文件读进度，角标自动隐藏，其余功能不受影响。
+- **宽窄屏**：宽屏每行多卡片、窄屏自动单列；深色主题与单书阅读器共用同一份偏好；支持搜索过滤与书本折叠。
+
+书架清单 `书架.md` 长这样（完整契约见 `references/shelf-output.md`）：
+
+```markdown
+# 我的速读书架
+
+## 《凡人修仙传》
+忘语 · 修仙
+
+- 第1–320章：凡人修仙传/第1-320章/速读稿.html
+- 第321–640章：凡人修仙传/第321-640章/速读稿.html
+
+## 《诡秘之主》
+- [卷一 小丑](诡秘之主/卷一/速读稿.html)
+```
+
 ## 目录
 
 ```
@@ -155,8 +194,9 @@ references/digest-template.md  # 速读稿模板 + 详略分级示例
 references/bridge-template.md  # 衔接包模板 + 「断片变数清单」
 references/splitting.md        # 章节切分、编码、自定义正则与异常处理
 references/html-output.md      # HTML 速读页的输入契约、参数与告警
+references/shelf-output.md     # 书架页的清单格式、扫描规则、参数与告警
 references/parallel-dispatch.md# 并行派单手册：批次粒度与子代理调度
-scripts/                       # 切分、校验、收尾、批次计划与 HTML 生成（6 个脚本）
+scripts/                       # 切分、校验、收尾、批次计划、HTML 与书架页生成（8 个脚本）
 ```
 
 ## 设计来源

@@ -83,7 +83,7 @@ python3 scripts/build_html.py --digest 速读稿.md \
 | `--title` | 页面标题，默认取速读稿 H1 |
 | `--progress-key` | 进度缓存键，默认取输出文件名（同一本书续段建议手动指定，可跨段合并进度） |
 | `--link-all` | 每个人名都链接（默认每单元首次） |
-| `--json` | 机器可读输出，`finalize.py` 用 |
+| `--json` | 机器可读输出，`check.py` 调用时用 |
 
 ## 四、生成后的自检（不占上下文）
 

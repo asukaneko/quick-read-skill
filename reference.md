@@ -40,10 +40,10 @@
 
 ## 收尾：一条命令
 ```bash
-python3 scripts/finalize.py --dir 第X-Y章 --range X-Y --source 原文/
-# 等价于依次跑 coverage_check.py → verify_slices.py → build_html.py，
-# 只在末尾回一小段摘要（覆盖率 / 切片通过数 / HTML 体量），失败才展开明细。
-python3 scripts/finalize.py --dir 第X-Y章 --range X-Y --source 原文/ --json   # 机器可读
+python3 scripts/check.py --dir 第X-Y章 --range X-Y --source 原文/
+# 单进程一遍跑完覆盖率 → 切片逐字 → build_html.py，只在末尾回一两行摘要，
+# 失败才展开明细并写 校验报告.md；原文归一化缓存于 原文/.normcache，重跑亚秒级。
+python3 scripts/check.py --dir 第X-Y章 --range X-Y --source 原文/ --json   # 机器可读
 ```
 
 ## 校验命令备忘（需要单项细查时才手敲）

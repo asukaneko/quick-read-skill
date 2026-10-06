@@ -103,7 +103,7 @@
 - 写完跑：
 
 ```bash
-python3 "$SKILL_DIR/scripts/verify_slices.py" --digest 速读稿.md --source 原文/ --index chapters.tsv --collect 原文切片.md
+python3 "$SKILL_DIR/scripts/check.py" --digest 速读稿.md --source 原文/ --index chapters.tsv --no-html
 ```
 
 ---
@@ -112,4 +112,4 @@ python3 "$SKILL_DIR/scripts/verify_slices.py" --digest 速读稿.md --source 原
 
 - 分单元写入文件，每 1–2 个单元落盘一次，并在对话里给一句进度（「单元二写完，主角已经出书院，接下来进京城篇」）。
 - 超过 100 章的书，**先出第 1 个单元当样章**让用户确认详略口味，再全量推进。
-- 全部写完后跑 `coverage_check.py`，确认没有静默漏章。
+- 全部写完后跑 `check.py`，确认没有静默漏章。

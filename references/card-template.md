@@ -75,4 +75,4 @@
 > 「逐字原文，一个字都不要改。」
 ```
 
-省略中间部分用 `……`，但不要改写。写完统一跑 `$SKILL_DIR/scripts/verify_slices.py` 校验。
+省略中间部分用 `……`，但不要改写。写完统一跑 `$SKILL_DIR/scripts/check.py --digest <刚写的文件> --source 原文/ --no-html` 校验。

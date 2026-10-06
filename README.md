@@ -25,8 +25,8 @@
 
 - **状态优先于事件**：每章卡片必须写「谁从什么状态变成了什么状态」。
 - **详略由用户偏好决定**，不由"文学价值"决定：你说不想看打斗，三千字的决战就该压成三句。
-- **水章也必须有交代**：可以一句话带过，但要写清哪几章、为什么、结果如何、有无后患——这是 `coverage_check.py` 兜底的事。
-- **原文切片逐字校验**：切片被润色过就不再是原文，`verify_slices.py` 会把它抓出来。
+- **水章也必须有交代**：可以一句话带过，但要写清哪几章、为什么、结果如何、有无后患——这是覆盖率校验兜底的事（`check.py`）。
+- **原文切片逐字校验**：切片被润色过就不再是原文，`check.py` 会把它抓出来。
 - **长书不靠上下文硬扛**：卡片落盘，逐章提取可并行分派给子代理，几百章也不会把上下文撑爆。
 - **断点续跑**：`_进度.md` 记录读到哪、下一步做什么，隔几天回来说一句"继续"就能接上。
 
@@ -87,7 +87,8 @@ git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/qui
 | `scripts/split_chapters.py` | 章节识别与切分、生成索引；自动猜编码（UTF-8/GB18030…）、清理盗版站广告行、识别卷/篇结构；认不出会告警并退化为定长分块 |
 | `scripts/verify_slices.py` | 校验原文切片是否**逐字**来自原文，定位到章，并可汇总成切片合集 |
 | `scripts/coverage_check.py` | 覆盖率兜底：列出一整段里"没被交代过"的章节 |
-| `scripts/finalize.py` | **一条命令收尾**：覆盖率 → 切片逐字 → 生成 HTML，只在末尾回一小段摘要，失败才展开明细 |
+| `scripts/check.py` | **一步收尾校验**：覆盖率 + 切片逐字 + 生成 HTML，单进程一次跑完；原文归一化缓存于 `原文/.normcache`，几百万字的书重跑也是亚秒级 |
+| `scripts/finalize.py` | 旧版收尾（三个子进程串跑、无缓存），日常用 `check.py` 即可 |
 | `scripts/build_html.py` | 把速读稿渲染成**单文件 HTML 阅读器**：单元导航、章节速查、人物链接、阅读进度缓存、响应式 |
 | `scripts/build_shelf.py` | 把**多本书的多份**速读稿 HTML 汇总成**书架式导航页**：一本书多册、卡片经相对路径跳转（不合并正文）、搜索、深色、进度角标 |
 | `scripts/make_plan.py` | 把章节索引切成可并行派单的批次，并为每批写一份自包含的派单文件 |
@@ -101,7 +102,11 @@ python3 "$SKILL_DIR/scripts/split_chapters.py" --input 全书.txt --outdir 阅�
 # 先试探能不能识别章节（不写文件）
 python3 "$SKILL_DIR/scripts/split_chapters.py" --input 全书.txt --dry-run
 
-# 校验速读稿里的切片是否逐字来自原文
+# 一条命令收尾：覆盖率 + 切片逐字 + 生成 HTML（原文归一化有缓存，改完随手重跑）
+python3 "$SKILL_DIR/scripts/check.py" \
+  --dir 阅读工作区/书名 --range 1-320 --source 阅读工作区/书名/原文
+
+# 单项细查才手敲下面两条（check.py 内部复用同一套规则，平时用不到）
 python3 "$SKILL_DIR/scripts/verify_slices.py" \
   --digest 阅读工作区/书名/速读稿.md \
   --source 阅读工作区/书名/原文 \
@@ -112,10 +117,6 @@ python3 "$SKILL_DIR/scripts/verify_slices.py" \
 python3 "$SKILL_DIR/scripts/coverage_check.py" \
   --index 阅读工作区/书名/chapters.tsv \
   --doc 阅读工作区/书名/速读稿.md
-
-# 一条命令收尾：覆盖率 + 切片逐字 + 生成 HTML
-python3 "$SKILL_DIR/scripts/finalize.py" \
-  --dir 阅读工作区/书名 --range 1-320 --source 阅读工作区/书名/原文
 
 # 把多本书的速读稿汇总成一个书架页（扫描目录自动收录）
 python3 "$SKILL_DIR/scripts/build_shelf.py" \
@@ -207,7 +208,7 @@ scripts/                       # 切分、校验、收尾、批次计划、HTML 
 
 - 请只对你**有权使用**的文本运行本 skill（自有文档、公版作品、已获授权的内容等）。
 - 速读稿的定位是「摘要 + 少量原文引用」，不是复制整本书。请遵守你所在地区的版权规定。
-- 模型的输出仍可能有误。切片可用 `verify_slices.py` 校验，但摘要性陈述需要你自己判断。
+- 模型的输出仍可能有误。切片可用 `check.py` 校验，但摘要性陈述需要你自己判断。
 
 ## License
 

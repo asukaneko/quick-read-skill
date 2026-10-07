@@ -203,8 +203,10 @@ def parse_blocks(text: str):
 # --------------------------------------------------------------------------
 # 人物档案解析
 # --------------------------------------------------------------------------
-ALIAS_HEAD_KEYS = ("本名", "姓名", "人物", "角色")
-ALIAS_COL_KEYS = ("马甲", "尊称", "别名", "化名", "道号", "代号", "称呼")
+ALIAS_HEAD_KEYS = ("本名", "真名", "姓名", "人物", "角色")
+ALIAS_COL_KEYS = ("马甲", "尊称", "别名", "别称", "化名", "道号", "代号",
+                  "称呼", "称号", "外号", "原名", "曾用名")
+ALIAS_PREFIX_RE = re.compile(r"^(?:又称|亦称|也称|又被称为|被称为|被称作|称作|叫做|也叫|即是|即)")
 SPLIT_RE = re.compile(r"[、,，/／|;；\s]+")
 EMPH_RE = re.compile(r"[*`]+")
 PAREN_RE = re.compile(r"（[^）]*）|\([^()]*\)")
@@ -225,11 +227,18 @@ def clean_alias_cell(s) -> str:
 
 
 def parse_characters(path: Path):
-    """返回 (aliases: {别名: 本名}, details: {本名: html片段})。"""
+    """返回 (aliases: {别名: 本名}, details: {本名: html片段})。
+
+    链接口径：
+    - 别名归一表里的 本名/别名 都映射到同一个本名（真名与别名触发同一个详情）；
+    - 「### 人名」条目标题即使没进别名表，也自成一个可链接人物——否则
+      表里漏收的真名永远不会有链接；
+    - 表里有、但正文没写 ### 条目的名字不生成链接——否则点开没有详情。
+    """
     aliases: dict[str, str] = {}
-    details: dict[str, str] = {}
+    raw: dict[str, str] = {}
     if not path or not path.is_file():
-        return aliases, details
+        return aliases, raw
 
     blocks = parse_blocks(path.read_text(encoding="utf-8"))
 
@@ -252,52 +261,70 @@ def parse_characters(path: Path):
         for row in b["rows"][1:]:
             if len(row) <= name_col or TABLE_SEP_RE.match(row[name_col] or "--"):
                 continue
-            main = clean_cell(row[name_col])
+            main = clean_cell(PAREN_RE.sub("", row[name_col]))
             if not main:
                 continue
             aliases.setdefault(main, main)
             for ci in alias_cols:
                 if ci < len(row):
                     for a in SPLIT_RE.split(clean_alias_cell(row[ci])):
-                        a = a.strip()
+                        a = ALIAS_PREFIX_RE.sub("", a).strip()
                         if a and len(a) <= 8:
                             aliases.setdefault(a, main)
 
-    # 2) 人物条目（h2/h3/h4 标题名命中别名表，或位于「人物」章节下的 h3）
+    # 2) 人物条目：标题命中别名表则归并到该本名；表没收录的 ###/#### 标题自成条目
     cur_name, buf = None, []
-    known = set(aliases.values())
 
     def flush():
         if cur_name and buf:
             body = "\n".join(buf).strip()
             if body:
-                details[cur_name] = render_char_detail(body, aliases)
+                raw[cur_name] = (raw[cur_name] + "\n\n" + body) if cur_name in raw else body
 
     for b in blocks:
         if b["t"] == "h":
             title = b["text"].strip().strip("*").strip()
-            hit = title if title in aliases else None
-            if hit is None and b["level"] >= 3 and known:
-                for k in aliases:
-                    if title.startswith(k) and len(k) >= 2:
-                        hit = aliases[k]
-                        break
+            bare = PAREN_RE.sub("", title).strip()
+            hit = None
+            if title in aliases:
+                hit = aliases[title]
+            elif bare in aliases:
+                hit = aliases[bare]
             if hit:
                 flush()
-                cur_name = aliases.get(hit, hit)
+                cur_name = hit
                 buf = []
                 continue
             if b["level"] <= 2 and cur_name:
                 flush()
                 cur_name, buf = None, []
                 continue
-            if cur_name:
-                buf.append(f"### {title}" if b["level"] >= 3 else f"## {title}")
+            if b["level"] >= 3:
+                # h3 一律视为条目边界（别名表漏收的人物也能立条）；h4+ 默认是
+                # 条目内小节，除非标题前缀命中某个人物（如「#### 韩立与南宫婉」）
+                pref = None
+                for k in sorted(aliases, key=len, reverse=True):
+                    if len(k) >= 2 and title.startswith(k):
+                        pref = aliases[k]
+                        break
+                stop = any(k in bare for k in ("别名", "归一", "索引", "目录"))
+                if (b["level"] == 3 and not stop) or (b["level"] >= 4 and pref):
+                    flush()
+                    cur_name = pref or (bare or title)
+                    if not pref:
+                        aliases.setdefault(cur_name, cur_name)
+                    buf = []
+                elif cur_name:
+                    buf.append(f"### {title}")
                 continue
             continue
         if cur_name:
             buf.append(block_to_md(b))
     flush()
+
+    # 3) 渲染条目：人物互链只用「有条目」的名字，别名统一指向本名
+    linkable = {a: t for a, t in aliases.items() if t in raw}
+    details = {name: render_char_detail(md, linkable) for name, md in raw.items()}
     return aliases, details
 
 
@@ -338,6 +365,8 @@ class RenderCtx:
         self.link_all = link_all
         self.linked: set[str] = set()
         self.sec: str | None = None      # 旧体例当前小节（详/略），用于条目分级
+        self.char_re = (re.compile("|".join(re.escape(a) for a in self.alias_keys))
+                        if self.alias_keys else None)
 
     def reset_unit(self):
         self.linked = set()
@@ -346,10 +375,9 @@ class RenderCtx:
 
 def _inline(raw: str, ctx: RenderCtx, allow_char=True, allow_chap=True) -> str:
     s = raw
-    if allow_char and ctx.alias_keys:
-        pattern = re.compile("|".join(re.escape(a) for a in ctx.alias_keys))
+    if allow_char and ctx.char_re:
         out, pos = [], 0
-        for m in pattern.finditer(s):
+        for m in ctx.char_re.finditer(s):
             name = ctx.aliases.get(m.group(0), m.group(0))
             out.append(s[pos:m.start()])
             if ctx.link_all or name not in ctx.linked:
@@ -388,7 +416,8 @@ def _inline(raw: str, ctx: RenderCtx, allow_char=True, allow_chap=True) -> str:
     s = re.sub(r"(?<!\*)\*([^*\n]+?)\*(?!\*)", r"<em>\1</em>", s)
     s = re.sub(r"`([^`\n]+?)`", r"<code>\1</code>", s)
     s = re.sub(r"⟦P:([^⟧]+)⟧",
-               lambda m: f'<a class="char" data-c="{m.group(1)}" href="#char-panel">{m.group(1)}</a>',
+               lambda m: (f'<a class="char" data-c="{_html.escape(m.group(1), quote=True)}"'
+                          f' href="#char-panel">{m.group(1)}</a>'),
                s)
     s = re.sub(r"⟦C:(\d+):([^⟧]+)⟧",
                lambda m: f'<a class="chip" href="#{m.group(2)}">第{m.group(1)}章</a>',
@@ -586,7 +615,9 @@ def build(digest_path: Path, characters_path, index_path, title, out_path,
                 cmap.setdefault(n, u["id"])
 
     # --- 第二遍：渲染 ---
-    ctx = RenderCtx(aliases, cmap, link_all=link_all)
+    # 正文人名只链「有条目」的人物：表里有、正文没写条目的名字链了也没详情可看
+    linkable = {a: t for a, t in aliases.items() if t in details}
+    ctx = RenderCtx(linkable, cmap, link_all=link_all)
     main_parts = []
     for bk in buckets:
         if bk["kind"] == "head" and not bk["blocks"]:
@@ -689,6 +720,12 @@ def char_warnings(aliases, details, units, characters_path):
         warns.append("《人物档案.md》里没解析到「别名归一表」：正文里不会生成人物链接。")
     elif not details:
         warns.append("《人物档案.md》有别名表但没有人物条目（### 人名）：点了人名没有详情可看。")
+    else:
+        no_entry = sorted({t for t in aliases.values() if t not in details})
+        if no_entry:
+            shown = "、".join(no_entry[:5]) + ("…" if len(no_entry) > 5 else "")
+            warns.append(f"别名表里有 {len(no_entry)} 个人物没写 ### 条目，"
+                         f"这些人名不会生成链接：{shown}")
     if not any(u["slices"] for u in units):
         warns.append("速读稿里没找到「【原文·第N章 章名】」切片：章节速查只能跳到单元级。")
     return warns

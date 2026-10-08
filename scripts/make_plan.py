@@ -8,12 +8,14 @@
     计划/批次/批次001.md     该批的自包含派单文件（子代理只读它 + 规范）
 
 派单文件里写的是**绝对路径**：子代理与你不同上下文，读不到你的相对路径。
-单元号按全局章号网格（每 size 章一个单元）编号，续跑时编号不会错位。
+默认单元号按全局章号网格（每 size 章一个单元）编号，续跑时编号不会错位。
+指定 --segment 时从段首切批、段内从 01 编号，计划与产物按段隔离。
 
 用法
 ----
 python3 make_plan.py --index chapters.tsv --base 阅读工作区/归墟行 --start 121 --end 320
 python3 make_plan.py --index chapters.tsv --base 阅读工作区/归墟行 --size 8 --json
+python3 make_plan.py --index chapters.tsv --base 阅读工作区/归墟行 --start 121 --end 216 --segment 第121-216章
 
 退出码：有章节文件定位不到时 1（计划仍会生成），全部正常 0。
 """
@@ -29,7 +31,7 @@ DEFAULT_SIZE = 12
 
 
 def load_index(tsv: Path):
-    lines = tsv.read_text(encoding="utf-8").splitlines()
+    lines = tsv.read_text(encoding="utf-8-sig").splitlines()
     if not lines:
         raise SystemExit(f"索引为空：{tsv}")
     header = [h.strip() for h in lines[0].split("\t")]
@@ -63,6 +65,33 @@ def load_index(tsv: Path):
         raw = parts[file_col].strip() if file_col is not None and len(parts) > file_col else ""
         rows.append({"idx": idx, "title": title, "chars": chars, "file": raw})
     return rows
+
+
+def select_scope(rows, start: int | None = None, end: int | None = None):
+    """检查 idx 范围完整性，避免缺章或重复索引被计划静默略过。"""
+    if not rows:
+        raise ValueError("索引里没有章节行")
+    ordered = sorted(rows, key=lambda r: r["idx"])
+    lo = start if start is not None else ordered[0]["idx"]
+    hi = end if end is not None else ordered[-1]["idx"]
+    if lo < 1 or hi < lo:
+        raise ValueError("章节范围必须满足 1 ≤ start ≤ end")
+    scope = [r for r in ordered if lo <= r["idx"] <= hi]
+    seen = set()
+    for row in scope:
+        if row["idx"] in seen:
+            raise ValueError(f"索引 idx 重复：{row['idx']}，请先核对原文与编号")
+        if row["chars"] < 0:
+            raise ValueError(f"索引字数不能为负：idx {row['idx']}")
+        seen.add(row["idx"])
+    expected = lo
+    for row in scope:
+        if row["idx"] != expected:
+            raise ValueError(f"索引缺少 idx {expected}，请先修索引")
+        expected += 1
+    if expected <= hi:
+        raise ValueError(f"索引缺少 idx {expected}，请先修索引")
+    return scope, lo, hi
 
 
 def locate_source(base: Path, src_dir: Path, row: dict):
@@ -109,12 +138,12 @@ def build_batches(rows, size: int):
 
 
 def write_batch_file(path: Path, no: int, total: int, rows, base: Path, spec: Path,
-                     src_dir: Path, missing: list):
+                     src_dir: Path, missing: list, ordinal: int | None = None):
     a, b = rows[0]["idx"], rows[-1]["idx"]
     unit = f"单元{no:02d}_第{a}-{b}章"
     chars = sum(r["chars"] for r in rows)
     out = []
-    out.append(f"# 批次{no:03d} · 第{a}–{b}章（本轮第 {no} 批 / 共 {total} 批）\n")
+    out.append(f"# 批次{no:03d} · 第{a}–{b}章（本轮第 {ordinal or no} 批 / 共 {total} 批）\n")
     out.append("> 本文件是你这一批的**全部输入说明**。只读本文件、下面的规范文件，"
                "以及本章批列出的原文文件；不要读别的批次，不要读全书。\n")
     out.append(f"- 章数：{len(rows)}（idx {a}–{b}）｜字数：约 {chars:,}")
@@ -125,7 +154,7 @@ def write_batch_file(path: Path, no: int, total: int, rows, base: Path, spec: Pa
     out.append("## 待读章节（按顺序逐章读完，一章都不能跳）\n")
     for r in rows:
         path_str = r.get("path") or "⚠️ 未定位到文件，请先修索引"
-        out.append(f"- [ ] {label(r)}（{r['chars']:,} 字）— `{path_str}`")
+        out.append(f"- [ ] {label(r)}（idx {r['idx']}，{r['chars']:,} 字）— `{path_str}`")
     out.append("")
     out.append("## 回报格式（只回这一行，不要把原文或卡片正文回传）\n")
     out.append(f"`批次{no:03d} 完成｜章数 {len(rows)}｜卡片 {len(rows)}｜摘要 {unit}.md｜异常：无`\n")
@@ -148,7 +177,9 @@ def main() -> int:
     ap.add_argument("--size", type=int, default=DEFAULT_SIZE,
                     help=f"每批章数，默认 {DEFAULT_SIZE}（3–4 万字一批，便于并行）")
     ap.add_argument("--src-dir", help="原文目录，默认 <base>/原文")
-    ap.add_argument("--spec", help="规范文件路径，默认 <base>/计划/批次规范.md")
+    ap.add_argument("--spec", help="规范路径；--segment 时相对 base，原有模式相对当前目录；默认 <base>/计划/批次规范.md")
+    ap.add_argument("--segment", help="段目录名，如 第121-216章；段内编号从 01 起，计划按段隔离")
+    ap.add_argument("--dry-run", action="store_true", help="只预览批次与缺文件情况，不写文件")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -156,17 +187,20 @@ def main() -> int:
         raise SystemExit("--size 必须 ≥ 1")
     base = Path(args.base).expanduser().resolve()
     src_dir = Path(args.src_dir).expanduser().resolve() if args.src_dir else base / "原文"
-    spec = Path(args.spec).expanduser().resolve() if args.spec else base / "计划" / "批次规范.md"
+    spec = Path(args.spec).expanduser() if args.spec else base / "计划" / "批次规范.md"
+    if not spec.is_absolute():
+        spec = (base if args.segment else Path.cwd()) / spec
+    spec = spec.resolve()
+    if args.segment is not None and (args.segment in ("", ".", "..")
+                                     or any(c in args.segment for c in '/\\:')):
+        ap.error("--segment 必须是单层段目录名")
+    output_base = base / args.segment if args.segment else base
 
     rows = load_index(Path(args.index).expanduser().resolve())
-    if not rows:
-        raise SystemExit("索引里没有章节行")
-    rows.sort(key=lambda r: r["idx"])
-    lo = args.start if args.start is not None else rows[0]["idx"]
-    hi = args.end if args.end is not None else rows[-1]["idx"]
-    scope = [r for r in rows if lo <= r["idx"] <= hi]
-    if not scope:
-        raise SystemExit(f"范围内没有章节：idx {lo}–{hi}")
+    try:
+        scope, lo, hi = select_scope(rows, args.start, args.end)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     missing_files = []
     for r in scope:
@@ -175,27 +209,39 @@ def main() -> int:
         if not p:
             missing_files.append(label(r))
 
-    batches = build_batches(scope, args.size)
-    batches_dir = base / "计划" / "批次"
-    batches_dir.mkdir(parents=True, exist_ok=True)
+    batches = ([scope[i:i + args.size] for i in range(0, len(scope), args.size)]
+               if args.segment else build_batches(scope, args.size))
+    suffix = f"_{args.segment}" if args.segment else ""
+    batches_dir = base / "计划" / f"批次{suffix}"
+    if not args.dry_run:
+        batches_dir.mkdir(parents=True, exist_ok=True)
+        if args.segment:
+            (output_base / "分章卡片").mkdir(parents=True, exist_ok=True)
+            (output_base / "单元摘要").mkdir(parents=True, exist_ok=True)
 
     summary, tsv_lines = [], ["批次\t起始章\t结束章\t章数\t字数\t单元名"]
     for k, rows_k in enumerate(batches, start=1):
-        no = (rows_k[0]["idx"] - 1) // args.size + 1
+        no = k if args.segment else (rows_k[0]["idx"] - 1) // args.size + 1
         a, b = rows_k[0]["idx"], rows_k[-1]["idx"]
         path = batches_dir / f"批次{no:03d}.md"
         batch_missing = [label(r) for r in rows_k if not r.get("path")]
-        unit, chars = write_batch_file(path, no, len(batches), rows_k, base, spec,
-                                       src_dir, batch_missing)
+        unit = f"单元{no:02d}_第{a}-{b}章"
+        chars = sum(r["chars"] for r in rows_k)
+        if not args.dry_run:
+            write_batch_file(path, no, len(batches), rows_k, output_base, spec,
+                             src_dir, batch_missing, ordinal=k)
         tsv_lines.append(f"批次{no:03d}\t{a}\t{b}\t{len(rows_k)}\t{chars}\t{unit}")
         summary.append({"batch": no, "start": a, "end": b, "chapters": len(rows_k),
                         "chars": chars, "unit": unit, "plan_file": str(path)})
 
-    list_path = base / "计划" / "批次清单.tsv"
-    list_path.write_text("\n".join(tsv_lines) + "\n", encoding="utf-8")
+    list_path = base / "计划" / f"批次清单{suffix}.tsv"
+    if not args.dry_run:
+        list_path.write_text("\n".join(tsv_lines) + "\n", encoding="utf-8")
 
     if args.json:
         print(json.dumps({"base": str(base), "spec": str(spec), "size": args.size,
+                          "segment": args.segment, "output_base": str(output_base),
+                          "dry_run": args.dry_run,
                           "range": [lo, hi], "batches": summary,
                           "missing_files": missing_files,
                           "manifest": str(list_path)}, ensure_ascii=False, indent=2))

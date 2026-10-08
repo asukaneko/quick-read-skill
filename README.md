@@ -58,6 +58,7 @@ git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/qui
 这本《XXX》太长了帮我快速过一遍，打斗不想看，感情线讲细一点
 我看到 120 章了，中间跳过，直接看 200 章，给我个能接上的前情提要
 从第 80 章开始我就没看了，后面帮我讲完
+先把剩下的章节规划成几段，每段在剧情收束处停下
 这段支线我不想看，告诉我后面接着发生什么
 把主角复仇这条线讲全，其他的简单带过
 ```
@@ -68,6 +69,8 @@ git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/qui
 阅读工作区/{书名}/
 ├── _进度.md            # 断点：模式、偏好、已读到第几章、下一步
 ├── 章节索引.md / chapters.tsv
+├── 计划/分段规划_第X-Y章.md / .tsv  # 多段范围、字数预算与断点依据
+├── 计划/批次_第X-Y章/              # 当前段的独立派单文件
 ├── 原文/               # 原文按章落盘（切片与核对的唯一依据）
 ├── 分章卡片/           # 逐章状态提取
 ├── 人物档案.md         # 含别名归一表（换马甲/道号/化名）
@@ -91,7 +94,8 @@ git clone https://github.com/asukaneko/quick-read-skill.git ~/.agents/skills/qui
 | `scripts/finalize.py` | 旧版收尾（三个子进程串跑、无缓存），日常用 `check.py` 即可 |
 | `scripts/build_html.py` | 把速读稿渲染成**单文件 HTML 阅读器**：单元导航、章节速查、人物链接、阅读进度缓存、响应式 |
 | `scripts/build_shelf.py` | 把**多本书的多份**速读稿 HTML 汇总成**书架式导航页**：一本书多册、卡片经相对路径跳转（不合并正文）、搜索、深色、进度角标 |
-| `scripts/make_plan.py` | 把章节索引切成可并行派单的批次，并为每批写一份自包含的派单文件 |
+| `scripts/make_segments.py` | 按章数、字数预算或指定末章生成多段规划草案；列出首末章、字数与预计批次，剧情断点需核对 |
+| `scripts/make_plan.py` | 把指定范围切成可并行派单的批次；`--segment` 按段隔离计划与产物，段内编号从 01 起 |
 
 ```bash
 SKILL_DIR=~/.claude/skills/quick-read
@@ -101,6 +105,15 @@ python3 "$SKILL_DIR/scripts/split_chapters.py" --input 全书.txt --outdir 阅�
 
 # 先试探能不能识别章节（不写文件）
 python3 "$SKILL_DIR/scripts/split_chapters.py" --input 全书.txt --dry-run
+
+# 先规划剩余范围（只读索引；随后核对剧情断点并补充依据）
+python3 "$SKILL_DIR/scripts/make_segments.py" \
+  --index 阅读工作区/书名/chapters.tsv --base 阅读工作区/书名 --start 121 --end 320 --chapters 100
+
+# 当前段生成独立批次，规范先写好；下一段使用另一个 --segment
+python3 "$SKILL_DIR/scripts/make_plan.py" \
+  --index 阅读工作区/书名/chapters.tsv --base 阅读工作区/书名 \
+  --start 121 --end 216 --segment 第121-216章 --spec 计划/批次规范_第121-216章.md
 
 # 一条命令收尾：覆盖率 + 切片逐字 + 生成 HTML（原文归一化有缓存，改完随手重跑）
 python3 "$SKILL_DIR/scripts/check.py" \
@@ -188,16 +201,17 @@ python3 "$SKILL_DIR/scripts/build_shelf.py" --root 阅读工作区
 ## 目录
 
 ```
-SKILL.md                       # 主流程：定段 → 并发读卡 → 聚合 → 校验 → 交付 HTML → 回写台账
+SKILL.md                       # 主流程：分段规划 → 并发读卡 → 聚合 → 校验 → 交付 HTML → 回写台账
 reference.md                   # 速读段体例清单速查：单元、切片、人物档案、伏笔四栏、收尾命令
 references/card-template.md    # 分章卡片模板 + 正反例
 references/digest-template.md  # 速读稿模板 + 详略分级示例
 references/bridge-template.md  # 衔接包模板 + 「断片变数清单」
 references/splitting.md        # 章节切分、编码、自定义正则与异常处理
+references/segment-planning.md # 分段预算、剧情断点核对、段内批次与滚动续规划
 references/html-output.md      # HTML 速读页的输入契约、参数与告警
 references/shelf-output.md     # 书架页的清单格式、扫描规则、参数与告警
 references/parallel-dispatch.md# 并行派单手册：批次粒度与子代理调度
-scripts/                       # 切分、校验、收尾、批次计划、HTML 与书架页生成（8 个脚本）
+scripts/                       # 切分、分段规划、批次计划、校验、收尾、HTML 与书架页生成
 ```
 
 ## 设计来源

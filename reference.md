@@ -59,6 +59,9 @@ python3 scripts/build_html.py --digest 第X-Y章/速读稿.md --json
 ```
 
 ## 断点与台账
+- 多段规划：见 `references/segment-planning.md`；`make_segments.py` 只算范围与预算，剧情断点核对后再填依据。
+- 当前段批次：`make_plan.py --index chapters.tsv --base <书籍工作区> --start X --end Y --segment 第X-Y章 --spec 计划/批次规范_第X-Y章.md`；计划在 `计划/批次_第X-Y章/`，卡片与摘要在该段目录，编号段内从 01 起。
 - 台账：`README.md`、`_进度.md` — 记本段范围、覆盖率、切片 PASS 数、资料线状态、下一段起读章（断点章＋1）。
+- 实际末章优先于旧规划；边界变化时同步修订规划的 Markdown、TSV 与后续未执行段。
 - 续做口令：用户说「继续速读《书名》，从第 X 章开始」即按本技能从第 1 步起新一轮。
 - HTML 进度键：同一本书各段建议统一 `--progress-key <书名拼音>-<起章>`，跨段阅读进度不打架。

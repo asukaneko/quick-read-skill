@@ -207,7 +207,13 @@ ALIAS_HEAD_KEYS = ("本名", "真名", "姓名", "人物", "角色")
 ALIAS_COL_KEYS = ("马甲", "尊称", "别名", "别称", "化名", "道号", "代号",
                   "称呼", "称号", "外号", "原名", "曾用名")
 ALIAS_PREFIX_RE = re.compile(r"^(?:又称|亦称|也称|又被称为|被称为|被称作|称作|叫做|也叫|即是|即)")
-SPLIT_RE = re.compile(r"[、,，/／|;；\s]+")
+ALIAS_SPLIT_RE = re.compile(r"[、,，/／|;；]+")
+ALIAS_PLACEHOLDER_RE = re.compile(r"^(?:[-‐‑‒–—―]+|无|暂无|无别名|未知|未详)$")
+ALIAS_NOTE_RE = re.compile(r"(?:起实为|实为|真名自报|自报于|人族旧识|名讳|身份|所化假身|均无名|无名全称)")
+GENERIC_ALIAS_NAMES = frozenset({
+    "仙子", "前辈", "道友", "师兄", "师姐", "师弟", "师妹", "师尊",
+    "老祖", "真人", "大人", "道长", "尊者", "圣祖",
+})
 EMPH_RE = re.compile(r"[*`]+")
 PAREN_RE = re.compile(r"（[^）]*）|\([^()]*\)")
 
@@ -267,10 +273,15 @@ def parse_characters(path: Path):
             aliases.setdefault(main, main)
             for ci in alias_cols:
                 if ci < len(row):
-                    for a in SPLIT_RE.split(clean_alias_cell(row[ci])):
+                    for a in ALIAS_SPLIT_RE.split(clean_alias_cell(row[ci])):
                         a = ALIAS_PREFIX_RE.sub("", a).strip()
-                        if a and len(a) <= 8:
-                            aliases.setdefault(a, main)
+                        if (not a or len(a) > 8 or any(ch.isspace() for ch in a)
+                                or any(ch.isdigit() for ch in a)
+                                or ALIAS_PLACEHOLDER_RE.fullmatch(a)
+                                or ALIAS_NOTE_RE.search(a)
+                                or a in GENERIC_ALIAS_NAMES):
+                            continue
+                        aliases.setdefault(a, main)
 
     # 2) 人物条目：标题命中别名表则归并到该本名；表没收录的 ###/#### 标题自成条目
     cur_name, buf = None, []
@@ -375,6 +386,7 @@ class RenderCtx:
 
 def _inline(raw: str, ctx: RenderCtx, allow_char=True, allow_chap=True) -> str:
     s = raw
+    char_links = []
     if allow_char and ctx.char_re:
         out, pos = [], 0
         for m in ctx.char_re.finditer(s):
@@ -382,7 +394,8 @@ def _inline(raw: str, ctx: RenderCtx, allow_char=True, allow_chap=True) -> str:
             out.append(s[pos:m.start()])
             if ctx.link_all or name not in ctx.linked:
                 ctx.linked.add(name)
-                out.append(f"⟦P:{name}⟧")
+                char_links.append((name, m.group(0)))
+                out.append(f"⟦P:{len(char_links) - 1}⟧")
             else:
                 out.append(m.group(0))
             pos = m.end()
@@ -415,10 +428,12 @@ def _inline(raw: str, ctx: RenderCtx, allow_char=True, allow_chap=True) -> str:
     s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)
     s = re.sub(r"(?<!\*)\*([^*\n]+?)\*(?!\*)", r"<em>\1</em>", s)
     s = re.sub(r"`([^`\n]+?)`", r"<code>\1</code>", s)
-    s = re.sub(r"⟦P:([^⟧]+)⟧",
-               lambda m: (f'<a class="char" data-c="{_html.escape(m.group(1), quote=True)}"'
-                          f' href="#char-panel">{m.group(1)}</a>'),
-               s)
+    def render_char_link(m):
+        name, label = char_links[int(m.group(1))]
+        return (f'<a class="char" data-c="{_html.escape(name, quote=True)}"'
+                f' href="#char-panel">{_html.escape(label)}</a>')
+
+    s = re.sub(r"⟦P:(\d+)⟧", render_char_link, s)
     s = re.sub(r"⟦C:(\d+):([^⟧]+)⟧",
                lambda m: f'<a class="chip" href="#{m.group(2)}">第{m.group(1)}章</a>',
                s)

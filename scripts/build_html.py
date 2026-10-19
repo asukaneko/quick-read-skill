@@ -26,6 +26,7 @@ python3 build_html.py --digest 速读稿.md --characters 人物档案.md --index
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html as _html
 import json
 import re
@@ -553,6 +554,14 @@ def load_index(path: Path):
 # --------------------------------------------------------------------------
 # 主流程
 # --------------------------------------------------------------------------
+def default_progress_key(digest_path: Path) -> str:
+    """为每份速读稿源文件生成稳定且彼此隔离的默认进度键。"""
+    source = Path(digest_path).expanduser().resolve()
+    identity = source.as_posix().casefold().encode("utf-8")
+    fingerprint = hashlib.sha256(identity).hexdigest()[:16]
+    return f"{source.stem}-{fingerprint}"
+
+
 def build(digest_path: Path, characters_path, index_path, title, out_path,
           link_all=False, progress_key=None):
     text = digest_path.read_text(encoding="utf-8")
@@ -703,7 +712,7 @@ def build(digest_path: Path, characters_path, index_path, title, out_path,
     nav_chars = [{"name": k, "search": _html.escape(f"{k} {' '.join(a for a, v in aliases.items() if v == k)}")}
                  for k in sorted(details)]
 
-    key = progress_key or out_path.stem or digest_path.stem
+    key = progress_key or default_progress_key(digest_path)
     data = {"key": key, "chars": details,
             "unitCount": len(units), "chapterCount": len(nav_chapters)}
 
@@ -1244,7 +1253,7 @@ def main() -> int:
     ap.add_argument("--characters", help="人物档案.md（默认在 digest 同目录/上级目录自动查找）")
     ap.add_argument("--index", help="chapters.tsv（提供后可跳转到全部分章）")
     ap.add_argument("--title", help="页面标题，默认取速读稿 H1 或文件名")
-    ap.add_argument("--progress-key", help="localStorage 进度键，默认用输出文件名")
+    ap.add_argument("--progress-key", help="localStorage 进度键，默认按速读稿源文件独立生成")
     ap.add_argument("--link-all", action="store_true", help="每个人名出现都变成链接（默认只链每单元首次）")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
